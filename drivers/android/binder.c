@@ -63,6 +63,7 @@
 #include <linux/security.h>
 #include <linux/spinlock.h>
 #include <linux/ratelimit.h>
+#include <linux/rekernel.h>
 #include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/sizes.h>
@@ -3169,6 +3170,18 @@ static void binder_transaction(struct binder_proc *proc,
 		target_proc->tmp_ref++;
 		binder_inner_proc_unlock(target_thread->proc);
 		trace_android_vh_binder_reply(target_proc, proc, thread, tr);
+   		if (start_rekernel_server() == 0) {
+			if (target_proc
+				&& (NULL != target_proc->tsk)
+				&& (NULL != proc->tsk)
+				&& (task_uid(target_proc->tsk).val <= MAX_SYSTEM_UID)
+				&& (proc->pid != target_proc->pid)
+				&& line_is_frozen(target_proc->tsk)) {
+     				char binder_kmsg[PACKET_SIZE];
+                       		snprintf(binder_kmsg, sizeof(binder_kmsg), "type=Binder,bindertype=reply,oneway=0,from_pid=%d,from=%d,target_pid=%d,target=%d;", proc->pid, task_uid(proc->tsk).val, target_proc->pid, task_uid(target_proc->tsk).val);
+         			send_netlink_message(binder_kmsg, strlen(binder_kmsg));
+			}
+   		}
 	} else {
 		if (tr->target.handle) {
 			struct binder_ref *ref;
